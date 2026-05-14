@@ -14,10 +14,33 @@ Tables outside of the Node and Edge constructs are for storing metadata informat
 """
 import re
 from pprint import pformat
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, JSON, DateTime
+import enum
+import warnings
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, JSON, DateTime, Enum, Float
 from sqlalchemy.orm import declarative_base, relationship, validates, hybrid_property
 
 VAR_PATTERN = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
+
+#: Configure a validator warning for any data file schema not previously considered, but allow injection.
+_FILE_SCHEMA = (
+    None,
+    'custom',
+    'json',
+    'ecsv',
+    'csv',
+    'tab_delimited',
+    'fits',
+    'hdf5',
+    'sql',
+    'pickle',
+    'html',
+    'xml',
+    'css',
+    'png',
+    'jpg',
+    'gif',
+)
+
 
 def _validator_template(key,value):
     if value is None:
@@ -25,8 +48,12 @@ def _validator_template(key,value):
     if not VAR_PATTERN.search(value):
         raise ValueError(f"Template '{value}' must contain at least one variable reference like $VAR or ${{VAR}}.")
 
-Base = declarative_base()
+def _validator_schema(key,value):
+    if value not in _FILE_SCHEMA:
+        warnings.warn(f"Injected schema '{value}' not previously identified. Check for errors.")
+    return value
 
+Base = declarative_base()
 
 def resolve(template: str, env: dict) -> str:
     if template is None:
@@ -43,6 +70,15 @@ def resolve(template: str, env: dict) -> str:
         return match.group(0)
 
     return VAR_PATTERN.sub(replacer, template)
+
+class FileType(str,enum.Enum):
+    regular = "regular"
+    directory = "directory"
+    symbolic_link = "symbolic_link"
+    socket = "socket"
+    fifo_special = "fifo_special"
+    block_special = "block_special"
+    character_special = "character_special"
 
 class Node(Base):
     __tablename__ = "nodes"
@@ -78,7 +114,6 @@ class CronTab(Node):
 class CronJob(Node):
     __tablename__ = "cron_jobs"
 
-    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     crontab_id = Column(Integer, ForeignKey("cron_tables.id")) #: Match individual cronjob to context table
 
     cadence = Column(String) #: Crontab five-field time string
@@ -110,3 +145,111 @@ class CronJob(Node):
 
     def __repr__(self):
         return f"CronJob({self.id!r}, {self.crontab.name!r}, {self.cadence!r}, {self.command!r})"
+
+class Credential(Node):
+    """
+    Documents a need for authentication as a dependency
+    """
+    __tablename__ = "credentials"
+
+    name = Column(String) #: Name of authentication
+    auth_type = Column(String) #: Authentication protocol verification method
+
+    __mapper_args__ = {"polymorphic_identity": "credential"}
+
+class Email(Node):
+    """
+    Documents a message sent to personnel
+    """
+    __tablename__ = "emails"
+
+    reciever = Column(String) #: Reciever address
+    sender = Column(String) #: Sender address
+    subject = Column(String) #: Subject Line
+
+    __mapper_args__ = {"polymorphic_identity": "email"}
+
+class File(Node):
+    """
+    Unix File base class
+    https://en.wikipedia.org/wiki/Unix_file_types
+    """
+    __tablename__ = "files"
+
+    template_path = Column(String) #: File path with environment variable templates like $HOME or ${HOME}
+    canonical_path = Column(String) #: File path with environment variable templates resolved to absolute paths
+    nfs_server = Column(String) #: NFS server name
+    file_type = Column(Enum(FileType)) #: Unix File Type
+
+    @hybrid_property
+    def path(self):
+        return self.template_path or self.canonical_path
+
+    @hybrid_property
+    def filename(self):
+        return self.path.split("/")[-1]
+
+    __mapper_args__ = {"polymorphic_identity": "file"}
+
+    @validates("template_path")
+    def validate_path(self, key, value):
+        return _validator_template(key, value)
+
+    def __repr__(self):
+        return f"File({self.id!r}, {self.file_type!r}, {self.filename!r})"
+
+class CodeFile(File):
+    """
+    Executable codefile. Purpose is scripts for execution, not every file that can be executed (directories)
+    """
+
+    __tablename__ = "code_files"
+
+    language = Column(String) #: programming language
+    github_repo = Column(String) #: URL to source code
+
+    __mapper_args__ = {"polymorphic_identity": "code_file"}
+
+class LogFile(File):
+    """
+    Human-readable log of system events
+    """
+
+    __tablename__ = "log_files"
+
+    retention = Column(Float) #: Number of days. Fractional days possible.
+
+    __mapper_args__ = {"polymorphic_identity": "log_file"}
+
+class DataFile(File):
+    """
+    Record of data, parseable by software.
+
+    Note that certain data files are text files with parsing that is customized such that
+    only the influencing software is configured to parse it, meaning that the file has no structure
+    parseable by third party libraries. In these cases, the schema is denoted as 'custom'.
+    """
+
+    __tablename__ = "data_files"
+
+    schema = Column(String) #: Encoding scheme of data
+
+    @validates('schema')
+    def validate_schema(self,key,value):
+        return _validator_schema(key,value)
+
+    __mapper_args__ = {"polymorphic_identity": "data_file"}
+
+class WebFile(DataFile):
+    """
+    Documents a web file, both for downloading and writing our web pages.
+    """
+
+    __tablename__ = "web_files"
+
+    protocol = Column(String) #: http, https, ftp
+    domain = Column(String) #: www.example.com
+
+    @hybrid_property
+    def url(self):
+        return f"{self.protocol}://{self.domain}{self.path}"
