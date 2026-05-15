@@ -80,6 +80,27 @@ class FileType(str,enum.Enum):
     block_special = "block_special"
     character_special = "character_special"
 
+class RelationType(str,enum.Enum):
+    #: Defines behavior between nodes. Role attribute provides secondary nuance if desired.
+    
+    #: Read File I/O operation
+    reads = "reads" #: Example roles: 'input' entire data file, 'lookup' specific value
+    
+    #: Write File I/O operation
+    writes = "writes" #: Example roles: 'append' to a persistently growing file, 'temp' for a temporary file, 'overwrite' for always rewriting the file
+
+    #: Start process execution
+    triggers = "triggers" #: Example roles: 'scheduled' by periodic cronjob, 'manual' for user trigger, 'event' for asynchronous event trigger from listener.
+
+    #: Continue process execution
+    calls = "calls" #: Example roles:
+
+    #: Dependency
+    requires = "requires" #: Example roles: 'library', 'config', 'credential'
+
+    #: Handle pathing variability between entities. Symlink?
+    resolves_to = "resolves_to"
+
 class Node(Base):
     __tablename__ = "nodes"
 
@@ -93,6 +114,30 @@ class Node(Base):
         "polymorphic_on": node_type,
         "polymorphic_identity": "node",
     }
+
+    outgoing_edges = relationship(
+        "Edge",
+        foreign_keys="Edge.src",
+        back_populates="src"
+    )
+
+    incoming_edges = relationship(
+        "Edge",
+        foreign_keys="Edge.dst",
+        back_populates="dst"
+    )
+
+    @hybrid_property
+    def edges(self):
+        return self.outgoing_edges + self.incoming_edges
+    
+    @hybrid_property
+    def successors(self):
+        return [edge.dst for edge in self.outgoing_edges]
+
+    @hybrid_property
+    def predecessors(self):
+        return [edge.src for edge in self.incoming_edges]
 
     def __repr__(self):
         return f"Node({self.id!r}, {self.node_type!r}, {self.last_updated!r})"
@@ -253,3 +298,22 @@ class WebFile(DataFile):
     @hybrid_property
     def url(self):
         return f"{self.protocol}://{self.domain}{self.path}"
+
+    __mapper_args__ = {"polymorphic_identity": "web_file"}
+
+class Edge(Base):
+    """
+    Defines node association table for relationship types between all nodes.
+    """
+
+    __tablename__ = "edges"
+
+    id = Column(Integer, primary_key=True)
+    src = Column(Integer, ForeignKey("nodes.id"))
+    dst = Column(Integer, ForeignKey("nodes.id"))
+    relation = Column(Enum(RelationType)) #: Type of relationship between nodes. See Relation
+    role = Column(String) #: Secondary descriptor of relationship, for example 'input' vs 'lookup' for a read relationship.
+    last_updated = Column(DateTime) #: ISO 8601 String
+
+    src = relationship("Node", foreign_keys=[src], back_populates="outgoing_edges")
+    dst = relationship("Node", foreign_keys=[dst], back_populates="incoming_edges")
