@@ -16,7 +16,7 @@ import re
 from pprint import pformat
 import enum
 import warnings
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, JSON, DateTime, Enum, Float
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Enum, Float, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, validates, hybrid_property
 
 VAR_PATTERN = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
@@ -101,6 +101,9 @@ class RelationType(str,enum.Enum):
     #: Handle pathing variability between entities. Symlink?
     resolves_to = "resolves_to"
 
+    #: mirroring relationship between nodes, for example a backup file or secondary instance of a cronjob on another machine for redundancy.
+    mirrors = "mirrors"
+
 class Node(Base):
     __tablename__ = "nodes"
 
@@ -118,13 +121,24 @@ class Node(Base):
     outgoing_edges = relationship(
         "Edge",
         foreign_keys="Edge.src",
-        back_populates="src"
+        back_populates="src",
+        cascade="all, delete-orphan",
+        passive_deletes=True
     )
 
     incoming_edges = relationship(
         "Edge",
         foreign_keys="Edge.dst",
-        back_populates="dst"
+        back_populates="dst",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
+
+    metadata = relationship(
+        "NodeMetaData",
+        foreign_keys="NodeMetaData.node_id",
+        back_populates="node",
+        cascade="all, delete-orphan"
     )
 
     @hybrid_property
@@ -309,11 +323,66 @@ class Edge(Base):
     __tablename__ = "edges"
 
     id = Column(Integer, primary_key=True)
-    src = Column(Integer, ForeignKey("nodes.id"))
-    dst = Column(Integer, ForeignKey("nodes.id"))
+    src = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
+    dst = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
     relation = Column(Enum(RelationType)) #: Type of relationship between nodes. See Relation
     role = Column(String) #: Secondary descriptor of relationship, for example 'input' vs 'lookup' for a read relationship.
     last_updated = Column(DateTime) #: ISO 8601 String
 
     src = relationship("Node", foreign_keys=[src], back_populates="outgoing_edges")
     dst = relationship("Node", foreign_keys=[dst], back_populates="incoming_edges")
+
+    metadata = relationship(
+        "EdgeMetaData",
+        foreign_keys="EdgeMetaData.edge_id",
+        back_populates="edge",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
+
+    @validates("role")
+    def validate_role(self, key, value):
+        if value is None:
+            return value
+        else:
+            return value.lower()
+
+    __table_args__ = (
+            UniqueConstraint("src", "dst", "relation", name="unique_edge"),
+    )
+
+class NodeMetaData(Base):
+    """
+    Stores metadata information about nodes, such as documentation and context information.
+    """
+
+    __tablename__ = "node_metadata"
+
+    id = Column(Integer, primary_key=True)
+    node_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
+    key = Column(String)
+    value = Column(JSON)
+
+    node = relationship(
+        "Node",
+        foreign_keys=[node_id],
+        back_populates="metadata"
+    )
+
+class EdgeMetaData(Base):
+    """
+    Stores metadata information about nodes, such as documentation and context information.
+    """
+
+    __tablename__ = "edge_metadata"
+
+    id = Column(Integer, primary_key=True)
+    edge_id = Column(Integer, ForeignKey("edges.id", ondelete="CASCADE"))
+    key = Column(String)
+    value = Column(JSON)
+
+    edge = relationship(
+        "Edge",
+        foreign_keys=[edge_id],
+        back_populates="metadata"
+    )
