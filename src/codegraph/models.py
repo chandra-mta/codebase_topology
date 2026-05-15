@@ -165,7 +165,11 @@ class CronTab(Node):
     name = Column(String, unique=True) #: name of table, Official operating table is owner@machine
     variables = Column(JSON) #: Environment variables as key-value pairs
 
-    jobs = relationship("CronJob", back_populates="crontab")
+    jobs = relationship(
+        "CronJob",
+        foreign_keys="CronJob.crontab_id",
+        back_populates="crontab"
+    )
 
     __mapper_args__ = {"polymorphic_identity": "crontable"}
 
@@ -249,7 +253,7 @@ class File(Node):
     template_path = Column(String) #: File path with environment variable templates like $HOME or ${HOME}
     canonical_path = Column(String) #: File path with environment variable templates resolved to absolute paths
     nfs_server = Column(String) #: NFS server name
-    file_type = Column(Enum(FileType)) #: Unix File Type
+    file_type = Column(Enum(FileType), default="regular") #: Unix File Type
 
     @hybrid_property
     def path(self):
