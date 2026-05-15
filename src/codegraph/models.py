@@ -17,7 +17,8 @@ from pprint import pformat
 import enum
 import warnings
 from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Enum, Float, UniqueConstraint
-from sqlalchemy.orm import declarative_base, relationship, validates, hybrid_property
+from sqlalchemy.orm import declarative_base, relationship, validates
+from sqlalchemy.ext.hybrid import hybrid_property
 
 VAR_PATTERN = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
 
@@ -120,7 +121,7 @@ class Node(Base):
 
     outgoing_edges = relationship(
         "Edge",
-        foreign_keys="Edge.src",
+        foreign_keys="Edge.src_id",
         back_populates="src",
         cascade="all, delete-orphan",
         passive_deletes=True
@@ -128,13 +129,13 @@ class Node(Base):
 
     incoming_edges = relationship(
         "Edge",
-        foreign_keys="Edge.dst",
+        foreign_keys="Edge.dst_id",
         back_populates="dst",
         cascade="all, delete-orphan",
         passive_deletes=True
     )
 
-    metadata = relationship(
+    node_metadata = relationship(
         "NodeMetaData",
         foreign_keys="NodeMetaData.node_id",
         back_populates="node",
@@ -159,6 +160,7 @@ class Node(Base):
 class CronTab(Node):
     __tablename__ = "cron_tables"
 
+    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     machine = Column(String) #: computing host
     name = Column(String, unique=True) #: name of table, Official operating table is owner@machine
     variables = Column(JSON) #: Environment variables as key-value pairs
@@ -173,6 +175,7 @@ class CronTab(Node):
 class CronJob(Node):
     __tablename__ = "cron_jobs"
 
+    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     crontab_id = Column(Integer, ForeignKey("cron_tables.id")) #: Match individual cronjob to context table
 
     cadence = Column(String) #: Crontab five-field time string
@@ -183,7 +186,11 @@ class CronJob(Node):
     def command(self):
         return self.resolve_command() or self.canonical_command
 
-    crontab = relationship("CronTab", back_populates='jobs')
+    crontab = relationship(
+        "CronTab",
+        foreign_keys=[crontab_id],
+        back_populates='jobs'
+    )
 
     __mapper_args__ = {"polymorphic_identity": "cronjob"}
 
@@ -203,7 +210,8 @@ class CronJob(Node):
         return resolve(self.template_command, env)
 
     def __repr__(self):
-        return f"CronJob({self.id!r}, {self.crontab.name!r}, {self.cadence!r}, {self.command!r})"
+        name = self.crontab.name if self.crontab else None
+        return f"CronJob({self.id!r}, {name!r}, {self.cadence!r}, {self.command!r})"
 
 class Credential(Node):
     """
@@ -211,6 +219,7 @@ class Credential(Node):
     """
     __tablename__ = "credentials"
 
+    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     name = Column(String) #: Name of authentication
     auth_type = Column(String) #: Authentication protocol verification method
 
@@ -222,6 +231,7 @@ class Email(Node):
     """
     __tablename__ = "emails"
 
+    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     reciever = Column(String) #: Reciever address
     sender = Column(String) #: Sender address
     subject = Column(String) #: Subject Line
@@ -235,6 +245,7 @@ class File(Node):
     """
     __tablename__ = "files"
 
+    id = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     template_path = Column(String) #: File path with environment variable templates like $HOME or ${HOME}
     canonical_path = Column(String) #: File path with environment variable templates resolved to absolute paths
     nfs_server = Column(String) #: NFS server name
@@ -264,6 +275,7 @@ class CodeFile(File):
 
     __tablename__ = "code_files"
 
+    id = Column(Integer, ForeignKey("files.id"), primary_key=True)
     language = Column(String) #: programming language
     github_repo = Column(String) #: URL to source code
 
@@ -276,6 +288,7 @@ class LogFile(File):
 
     __tablename__ = "log_files"
 
+    id = Column(Integer, ForeignKey("files.id"), primary_key=True)
     retention = Column(Float) #: Number of days. Fractional days possible.
 
     __mapper_args__ = {"polymorphic_identity": "log_file"}
@@ -291,6 +304,7 @@ class DataFile(File):
 
     __tablename__ = "data_files"
 
+    id = Column(Integer, ForeignKey("files.id"), primary_key=True)
     schema = Column(String) #: Encoding scheme of data
 
     @validates('schema')
@@ -306,6 +320,7 @@ class WebFile(DataFile):
 
     __tablename__ = "web_files"
 
+    id = Column(Integer, ForeignKey("data_files.id"), primary_key=True)
     protocol = Column(String) #: http, https, ftp
     domain = Column(String) #: www.example.com
 
@@ -323,16 +338,16 @@ class Edge(Base):
     __tablename__ = "edges"
 
     id = Column(Integer, primary_key=True)
-    src = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
-    dst = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
+    src_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
+    dst_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
     relation = Column(Enum(RelationType)) #: Type of relationship between nodes. See Relation
     role = Column(String) #: Secondary descriptor of relationship, for example 'input' vs 'lookup' for a read relationship.
     last_updated = Column(DateTime) #: ISO 8601 String
 
-    src = relationship("Node", foreign_keys=[src], back_populates="outgoing_edges")
-    dst = relationship("Node", foreign_keys=[dst], back_populates="incoming_edges")
+    src = relationship("Node", foreign_keys=[src_id], back_populates="outgoing_edges")
+    dst = relationship("Node", foreign_keys=[dst_id], back_populates="incoming_edges")
 
-    metadata = relationship(
+    edge_metadata = relationship(
         "EdgeMetaData",
         foreign_keys="EdgeMetaData.edge_id",
         back_populates="edge",
@@ -348,7 +363,7 @@ class Edge(Base):
             return value.lower()
 
     __table_args__ = (
-            UniqueConstraint("src", "dst", "relation", name="unique_edge"),
+            UniqueConstraint("src_id", "dst_id", "relation", name="unique_edge"),
     )
 
 class NodeMetaData(Base):
@@ -356,7 +371,7 @@ class NodeMetaData(Base):
     Stores metadata information about nodes, such as documentation and context information.
     """
 
-    __tablename__ = "node_metadata"
+    __tablename__ = "node_metadatas"
 
     id = Column(Integer, primary_key=True)
     node_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
@@ -366,15 +381,15 @@ class NodeMetaData(Base):
     node = relationship(
         "Node",
         foreign_keys=[node_id],
-        back_populates="metadata"
+        back_populates="node_metadata"
     )
 
 class EdgeMetaData(Base):
     """
-    Stores metadata information about nodes, such as documentation and context information.
+    Stores metadata information about edges, such as documentation and context information.
     """
 
-    __tablename__ = "edge_metadata"
+    __tablename__ = "edge_metadatas"
 
     id = Column(Integer, primary_key=True)
     edge_id = Column(Integer, ForeignKey("edges.id", ondelete="CASCADE"))
@@ -384,5 +399,5 @@ class EdgeMetaData(Base):
     edge = relationship(
         "Edge",
         foreign_keys=[edge_id],
-        back_populates="metadata"
+        back_populates="edge_metadata"
     )
