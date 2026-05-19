@@ -12,8 +12,8 @@ if TOPOLOGY_DB_DIR is None:
 else:
     DB_URL = f"sqlite:///{Path(TOPOLOGY_DB_DIR, TOPOLOGY_DB_NAME)}"
 
-engine = create_engine(DB_URL, echo=_echo)
-SessionLocal = sessionmaker(bind=engine)
+_engine = create_engine(DB_URL, echo=_echo)
+_SessionLocal = sessionmaker(bind=_engine)
 
 def get_session():
-    return SessionLocal()
+    return _SessionLocal()

@@ -20,7 +20,7 @@ from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Enum
 from sqlalchemy.orm import declarative_base, relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 
-VAR_PATTERN = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
+_VAR_PATTERN = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
 
 #: Configure a validator warning for any data file schema not previously considered, but allow injection.
 _FILE_SCHEMA = (
@@ -46,7 +46,7 @@ _FILE_SCHEMA = (
 def _validator_template(key,value):
     if value is None:
         return value
-    if not VAR_PATTERN.search(value):
+    if not _VAR_PATTERN.search(value):
         raise ValueError(f"Template '{value}' must contain at least one variable reference like $VAR or ${{VAR}}.")
 
 def _validator_schema(key,value):
@@ -70,7 +70,7 @@ def resolve(template: str, env: dict) -> str:
         # leave untouched if not found
         return match.group(0)
 
-    return VAR_PATTERN.sub(replacer, template)
+    return _VAR_PATTERN.sub(replacer, template)
 
 class FileType(str,enum.Enum):
     regular = "regular"
