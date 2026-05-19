@@ -36,10 +36,29 @@ _FILE_SCHEMA = (
     'pickle',
     'html',
     'xml',
+    'yaml',
     'css',
     'png',
     'jpg',
     'gif',
+)
+
+_FILE_LANGUAGE = (
+    None,
+    'python',
+    'jupyter_notebook',
+    'idl',
+    'bash',
+    'tsch',
+    'csh',
+    'perl',
+    'javascript',
+    'java',
+    'c++',
+    'c#',
+    'fortran',
+    'php',
+    'makefile',
 )
 
 
@@ -53,6 +72,27 @@ def _validator_schema(key,value):
     if value not in _FILE_SCHEMA:
         warnings.warn(f"Injected schema '{value}' not previously identified. Check for errors.")
     return value
+
+def _validator_language(key,value):
+    if value not in _FILE_LANGUAGE:
+        warnings.warn(f"Injected language '{value}' not previously identified. Check for errors.")
+    return value
+
+def _validator_file_type(key,value):
+    if value is None:
+        raise ValueError(f"File type cannot be None. Must be one of {list(FileType.__members__.keys())}.")
+    _value = value.lower()
+    if _value not in FileType:
+        raise ValueError(f"File type '{value}' not recognized. Must be one of {list(FileType.__members__.keys())}.")
+    return _value
+
+def _validator_relation_type(key,value):
+    if value is None:
+        raise ValueError(f"Relation type cannot be None. Must be one of {list(RelationType.__members__.keys())}.")
+    _value = value.lower()
+    if _value not in RelationType:
+        raise ValueError(f"Relation type '{value}' not recognized. Must be one of {list(RelationType.__members__.keys())}.")
+    return _value
 
 Base = declarative_base()
 
@@ -269,6 +309,10 @@ class File(Node):
     def validate_path(self, key, value):
         return _validator_template(key, value)
 
+    @validates("file_type")
+    def validate_file_type(self, key, value):
+        return _validator_file_type(key, value)
+
     def __repr__(self):
         return f"File({self.id!r}, {self.file_type!r}, {self.filename!r})"
 
@@ -282,6 +326,10 @@ class CodeFile(File):
     id = Column(Integer, ForeignKey("files.id"), primary_key=True)
     language = Column(String) #: programming language
     github_repo = Column(String) #: URL to source code
+
+    @validates('language')
+    def validate_language(self,key,value):
+        return _validator_language(key,value)
 
     __mapper_args__ = {"polymorphic_identity": "code_file"}
 
@@ -365,6 +413,10 @@ class Edge(Base):
             return value
         else:
             return value.lower()
+
+    @validates("relation")
+    def validate_relation(self, key, value):
+        return _validator_relation_type(key, value)
 
     __table_args__ = (
             UniqueConstraint("src_id", "dst_id", "relation", name="unique_edge"),
