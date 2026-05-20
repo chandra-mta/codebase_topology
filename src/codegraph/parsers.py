@@ -62,8 +62,8 @@ def parse_cronjob_line(line, task, owner=None, env={}, crontab=None):
         #: also fill in the CronTab -> CronJob relationship
         orms['cronjob'].crontab_id = crontab.id
         trigger_edge = Edge(
-            src_id=crontab.id,
-            dst_id=orms['cronjob'].id,
+            src=crontab,
+            dst=orms['cronjob'],
             relation="triggers"
         )
         orms['trigger_edge'] = trigger_edge
@@ -82,8 +82,8 @@ def parse_cronjob_line(line, task, owner=None, env={}, crontab=None):
         )
 
         log_edge = Edge(
-            src_id=orms['cronjob'].id,
-            dst_id=log_file_orm.id,
+            src=orms['cronjob'],
+            dst=log_file_orm,
             relation="writes",
             role='logs'
         )
