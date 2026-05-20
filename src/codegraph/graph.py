@@ -13,8 +13,14 @@ def build_graph(nodes: list[Node], edges: list[Edge]) -> nx.DiGraph:
     """
     G = nx.DiGraph()
     for f in nodes:
-        G.add_node(f.id, **orm_to_dict(f))
+        node_attrs = orm_to_dict(f)
+        #: Convert datetime to string for JSON serialization
+        node_attrs['last_updated'] = node_attrs['last_updated'].isoformat() if node_attrs['last_updated'] else None
+        G.add_node(f.id, **node_attrs)
 
     for e in edges:
-        G.add_edge(e.src_id, e.dst_id, **orm_to_dict(e))
+        edge_attrs = orm_to_dict(e)
+        #: Convert datetime to string for JSON serialization
+        edge_attrs['last_updated'] = edge_attrs['last_updated'].isoformat() if edge_attrs['last_updated'] else None
+        G.add_edge(e.src_id, e.dst_id, **edge_attrs)
     return G

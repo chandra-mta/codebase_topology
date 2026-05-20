@@ -12,7 +12,8 @@ license-files = ["LICENSE"]
 dependencies = [
     "sqlalchemy",
     "networkx",
-    "alembic"
+    "alembic",
+    "pyvis",
 ]
 
 [tool.setuptools.packages.find]
