@@ -65,8 +65,10 @@ _FILE_LANGUAGE = (
 def _validator_template(key,value):
     if value is None:
         return value
-    if not _VAR_PATTERN.search(value):
+    elif not _VAR_PATTERN.search(value):
         raise ValueError(f"Template '{value}' must contain at least one variable reference like $VAR or ${{VAR}}.")
+    else:
+        return value
 
 def _validator_schema(key,value):
     if value not in _FILE_SCHEMA:
@@ -384,8 +386,8 @@ class Edge(Base):
     __tablename__ = "edges"
 
     id = Column(Integer, primary_key=True)
-    src_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
-    dst_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"))
+    src_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False)
+    dst_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False)
     relation = Column(Enum(RelationType)) #: Type of relationship between nodes. See Relation
     role = Column(String) #: Secondary descriptor of relationship, for example 'input' vs 'lookup' for a read relationship.
     last_updated = Column(DateTime) #: ISO 8601 String
