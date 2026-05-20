@@ -16,6 +16,7 @@ import re
 from pprint import pformat
 import enum
 import warnings
+from datetime import datetime
 from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Enum, Float, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -145,7 +146,11 @@ class Node(Base):
 
     id = Column(Integer, primary_key=True)
     node_type = Column(String) #: Discriminator column for SQLAlchemy class mapping.
-    last_updated = Column(DateTime) #: ISO 8601 String
+    last_updated = Column(
+        DateTime,
+        default=datetime.now(),
+        onupdate=datetime.now(),
+    ) #: ISO 8601 String
     documentation = Column(String) #: Short description of detailed docs of node information
     owner = Column(String) #: Categorical owner of Node. Unix file user ‘mta’, ‘cus’ or more general team/source like ‘DSOps’, ‘ACIS’, ‘MAUDE’.
 
@@ -264,6 +269,8 @@ class Credential(Node):
     auth_type = Column(String) #: Authentication protocol verification method
 
     __mapper_args__ = {"polymorphic_identity": "credential"}
+    def __repr__(self):
+        return f"Credential({self.id!r}, {self.name!r}, {self.auth_type!r})"
 
 class Email(Node):
     """
@@ -277,6 +284,9 @@ class Email(Node):
     subject = Column(String) #: Subject Line
 
     __mapper_args__ = {"polymorphic_identity": "email"}
+
+    def __repr__(self):
+        return f"Email({self.id!r}, {self.sender!r} -> {self.reciever!r}, {self.subject!r})"
 
 class File(Node):
     """
@@ -329,6 +339,9 @@ class CodeFile(File):
 
     __mapper_args__ = {"polymorphic_identity": "code_file"}
 
+    def __repr__(self):
+        return f"CodeFile({self.id!r}, {self.filename!r}, {self.language!r})"
+
 class LogFile(File):
     """
     Human-readable log of system events
@@ -337,9 +350,12 @@ class LogFile(File):
     __tablename__ = "log_files"
 
     id = Column(Integer, ForeignKey("files.id"), primary_key=True)
-    retention = Column(Float) #: Number of days. Fractional days possible.
+    retention = Column(Float, default=1) #: Number of days. Fractional days possible.
 
     __mapper_args__ = {"polymorphic_identity": "log_file"}
+
+    def __repr__(self):
+        return f"LogFile({self.id!r}, {self.filename!r}, retention={self.retention!r})"
 
 class DataFile(File):
     """
@@ -361,6 +377,9 @@ class DataFile(File):
 
     __mapper_args__ = {"polymorphic_identity": "data_file"}
 
+    def __repr__(self):
+        return f"DataFile({self.id!r}, {self.filename!r}, {self.schema!r})"
+
 class WebFile(DataFile):
     """
     Documents a web file, both for downloading and writing our web pages.
@@ -378,6 +397,9 @@ class WebFile(DataFile):
 
     __mapper_args__ = {"polymorphic_identity": "web_file"}
 
+    def __repr__(self):
+        return f"WebFile({self.id!r}, {self.url!r})"
+
 class Edge(Base):
     """
     Defines node association table for relationship types between all nodes.
@@ -390,7 +412,11 @@ class Edge(Base):
     dst_id = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False)
     relation = Column(Enum(RelationType)) #: Type of relationship between nodes. See Relation
     role = Column(String) #: Secondary descriptor of relationship, for example 'input' vs 'lookup' for a read relationship.
-    last_updated = Column(DateTime) #: ISO 8601 String
+    last_updated = Column(
+        DateTime,
+        default=datetime.now(),
+        onupdate=datetime.now(),
+    ) #: ISO 8601 String
 
     src = relationship("Node", foreign_keys=[src_id], back_populates="outgoing_edges")
     dst = relationship("Node", foreign_keys=[dst_id], back_populates="incoming_edges")
@@ -418,6 +444,9 @@ class Edge(Base):
             UniqueConstraint("src_id", "dst_id", "relation", name="unique_edge"),
     )
 
+    def __repr__(self):
+        return f"Edge({self.id!r}, {self.src.node_type!r} -> {self.dst.node_type!r}, relation={self.relation!r}, role={self.role!r})"
+
 class NodeMetaData(Base):
     """
     Stores metadata information about nodes, such as documentation and context information.
@@ -436,6 +465,9 @@ class NodeMetaData(Base):
         back_populates="node_metadata"
     )
 
+    def __repr__(self):
+        return f"NodeMetaData({self.id!r}, {self.node.node_type!r}, {self.key!r})"
+
 class EdgeMetaData(Base):
     """
     Stores metadata information about edges, such as documentation and context information.
@@ -453,3 +485,6 @@ class EdgeMetaData(Base):
         foreign_keys=[edge_id],
         back_populates="edge_metadata"
     )
+
+    def __repr__(self):
+        return f"EdgeMetaData({self.id!r}, {self.edge!r}, {self.key!r})"
