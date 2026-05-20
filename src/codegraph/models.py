@@ -100,17 +100,10 @@ def resolve(template: str, env: dict) -> str:
     if template is None:
         return None
 
-    def replacer(match):
-        # group(1) = ${VAR}, group(2) = $VAR
-        var_name = match.group(1) if match.group(1) is not None else match.group(2)
-
-        if var_name in env:
-            return env[var_name]
-
-        # leave untouched if not found
-        return match.group(0)
-
-    return _VAR_PATTERN.sub(replacer, template)
+    for k,v in env.items():
+        template = template.replace(f"${k}", v) #: $VAR format
+        template = template.replace(f"${{{k}}}", v) #: ${VAR} format
+    return template
 
 class FileType(str,enum.Enum):
     regular = "regular"
@@ -223,6 +216,7 @@ class CronJob(Node):
     crontab_id = Column(Integer, ForeignKey("cron_tables.id")) #: Match individual cronjob to context table
 
     cadence = Column(String) #: Crontab five-field time string
+    task = Column(String) #: categorical string classifying the task accomplished by this cronjob.
     template_command = Column(String) #: Command run by cron daemon with environment variables.
     canonical_command = Column(String) #: Command run by cron daemon with environment variables.
 
