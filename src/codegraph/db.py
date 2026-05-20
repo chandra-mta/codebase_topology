@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker, object_mapper, func
+from sqlalchemy import create_engine, event, func
+from sqlalchemy.orm import Session, sessionmaker, object_mapper
 
 TOPOLOGY_DB_NAME = os.getenv("TOPOLOGY_DB_NAME", "mta_codebase.db")
 TOPOLOGY_DB_DIR = os.getenv("TOPOLOGY_DB_DIR")
@@ -12,11 +12,11 @@ if TOPOLOGY_DB_DIR is None:
 else:
     DB_URL = f"sqlite:///{Path(TOPOLOGY_DB_DIR, TOPOLOGY_DB_NAME)}"
 
-_engine = create_engine(DB_URL, echo=_echo)
-_SessionLocal = sessionmaker(bind=_engine)
+engine = create_engine(DB_URL, echo=_echo)
+SessionLocal = sessionmaker(bind=engine)
 
 def get_session():
-    return _SessionLocal()
+    return SessionLocal()
 
 #: Automatically update the polymorphic base class for any Node or Edge with a last_updated time stamp,
 #: based off of listening to when a session will flush data to the database.
