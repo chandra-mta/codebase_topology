@@ -1,0 +1,30 @@
+[project]
+name = "codegraph"
+authors = [
+    {name = "William Aaron", email="william.aaron@cfa.harvard.edu"}
+]
+version = "0.3.0"
+description = "MTA codebase dependency documentation and graph tool"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+dependencies = [
+    "sqlalchemy",
+    "networkx",
+    "alembic",
+    "pyvis",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest]
+addopts = ["--import-mode=importlib"]
+# Add the directory containing your package (e.g., 'src' or '.') to the python path
+pythonpath = ["src"]
+# Optionally define where pytest should look for tests
+testpaths = ["tests"]
+
+[project.scripts]
+codegraph = "codegraph.cli:main"
